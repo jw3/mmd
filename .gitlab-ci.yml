@@ -1,0 +1,20 @@
+stages:
+  - publish
+
+docker_latest:
+  stage: publish
+  script:
+  - docker login -u gitlab-ci-token -p $CI_BUILD_TOKEN $CI_REGISTRY
+
+  - sbt docker:publishLocal
+
+  - docker tag mockdevice:latest $CI_REGISTRY_IMAGE
+  - docker push $CI_REGISTRY_IMAGE
+  - docker rmi $CI_REGISTRY_IMAGE
+  - docker rmi mockdevice:latest
+  only:
+    refs:
+      - master
+    changes:
+      - build.sbt
+      - src/main/**/*
