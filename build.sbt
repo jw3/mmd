@@ -17,6 +17,7 @@ scalacOptions ++= Seq(
 )
 
 libraryDependencies := Seq(
+  "com.iheart" %% "ficus" % Ver.ficus,
   "com.lihaoyi" %% "requests" % "0.2.0",
   "com.typesafe.akka" %% "akka-http-spray-json" % Ver.akkaHttp,
   "com.lightbend.akka" %% "akka-stream-alpakka-mqtt" % Ver.alpakka,
