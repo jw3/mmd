@@ -26,7 +26,7 @@ object Px extends LazyLogging {
 
   val deviceId = "0_0"
   val channel = "default"
-  val prefix = s"/xr/$channel"
+  val prefix = s"xr/$channel"
 
   val tobeFunc = "move"
   val asisFunc = PositionUpdate
