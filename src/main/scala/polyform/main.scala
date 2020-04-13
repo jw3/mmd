@@ -3,15 +3,16 @@ package polyform
 import akka.Done
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
-import akka.stream.alpakka.mqtt.scaladsl.MqttSource
-import akka.stream.alpakka.mqtt.{MqttConnectionSettings, MqttQoS, MqttSubscriptions}
-import akka.stream.scaladsl.{Keep, Sink}
+import akka.stream.alpakka.mqtt.scaladsl.{MqttSink, MqttSource}
+import akka.stream.alpakka.mqtt.{MqttConnectionSettings, MqttMessage, MqttQoS, MqttSubscriptions}
+import akka.stream.scaladsl.{Keep, Sink, Source}
+import akka.util.ByteString
 import com.ctc.polyform.Protocol.Topics._
 import com.ctc.polyform.Protocol.{CellZ, Module, ModuleConfig}
 import com.typesafe.scalalogging.LazyLogging
 import net.ceedubs.ficus.Ficus._
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence
-import polyform.Px.{deviceId, prefix}
+import polyform.Px.{asisChannel, deviceId, topicPrefix}
 import requests.Response
 import spray.json._
 
@@ -25,8 +26,9 @@ object Px extends LazyLogging {
   val config = system.settings.config
 
   val deviceId = "0_0"
-  val channel = "default"
-  val prefix = s"xr/$channel"
+  val asisChannel = config.as[String]("channel.asis")
+  val tobeChannel = config.as[String]("channel.tobe")
+  val topicPrefix = s"xr"
 
   val tobeFunc = "move"
   val asisFunc = PositionUpdate
@@ -34,18 +36,21 @@ object Px extends LazyLogging {
   val api = "http://localhost:9000/v1/"
   private val Unused = "__unused__"
   private val brokerHost = config.as[String]("mqtt.host")
-  private val brokerPort = config.as[Int]("mqtt.port")
+  private val brokerPort = config.getAs[Int]("mqtt.port").getOrElse(1883)
   val mqttUri = s"tcp://$brokerHost:$brokerPort"
   private val connectionSettings = MqttConnectionSettings(mqttUri, Unused, new MemoryPersistence)
 
   def publish(topic: String, data: String): Response =
     requests.post(api + "devices/events", data = Map("name" → topic, "data" → data))
 
+  val mqttSink: Sink[MqttMessage, Future[Done]] =
+    MqttSink(connectionSettings.withClientId(s"mock_$deviceId"), MqttQoS.atLeastOnce)
+
   def function(name: String, fn: String ⇒ Unit): Future[Done] = {
     val (subscribed, result) = MqttSource
       .atMostOnce(
         connectionSettings.withClientId(deviceId + name),
-        MqttSubscriptions(s"$prefix/$deviceId/$name", MqttQoS.atLeastOnce),
+        MqttSubscriptions(s"$topicPrefix/$tobeChannel/$deviceId/$name", MqttQoS.atLeastOnce),
         bufferSize = 8
       )
       .toMat(Sink.foreach(e ⇒ fn(e.payload.utf8String)))(Keep.both)
@@ -69,7 +74,7 @@ object Px extends LazyLogging {
 object main extends App with LazyLogging {
   logger.info("connecting to {}", Px.mqttUri)
   def S(R: Boolean, M: Boolean) = s"""{"ready":$R,"moving":$M}"""
-  def P(cz: CellZ) = s"""{"x":${cz.x},"y":${cz.y},"z":${cz.z}}"""
+  def P(cz: CellZ) = s"""[{"x":${cz.x},"y":${cz.y},"z":${cz.z.toInt}}]"""
 
   val (x, y, w, h) = (0, 0, 8, 8)
   val hardargs = s"""{ "x": $x, "y": $y, "w": $w, "h": $h }"""
@@ -83,7 +88,6 @@ object main extends App with LazyLogging {
   private def receiveMove(v: String): Unit = {
     require(config.nonEmpty, "configuration was not specified")
     moduleToBe = moduleToBe.map(_.set(v.parseJson.convertTo[CellZ]))
-    println(s"move: $v")
     aligning = true
   }
   val receiveMoveFn = Px.function(Px.tobeFunc, receiveMove)
@@ -110,15 +114,27 @@ object main extends App with LazyLogging {
         moves :+= cz
       }
 
-      println(moves.mkString(","))
+      println(moves.map(cz => s"{x:${cz.x} y:${cz.y} z:${cz.z}}").mkString(", "))
 
       moves match {
         case Nil ⇒
           aligning = false
-          Px.publish(s"$prefix/$deviceId/$StateUpdate", S(ready, aligning))
+          Px.publish(s"$topicPrefix/$deviceId/$StateUpdate", S(ready, aligning))
           println("alignment completed")
         case all ⇒
-          all.foreach(cz ⇒ Px.publish(s"$prefix/$deviceId/${Px.asisFunc}", P(cz)))
+          import Px.materializer
+
+          // particle style telemetry
+          all.foreach(cz => Px.publish(s"$topicPrefix/$deviceId/pos", P(cz)))
+
+          // modbus style telemetry
+          Source
+            .fromIterator(() => all.iterator)
+            .map { cz =>
+              MqttMessage(s"/$topicPrefix/$asisChannel/$deviceId/move", ByteString(P(cz)))
+            }
+            .runWith(Px.mqttSink)
+
       }
     }
     Thread.sleep(1000)
