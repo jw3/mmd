@@ -33,6 +33,9 @@ object Px extends LazyLogging {
   val tobeFunc = "move"
   val asisFunc = PositionUpdate
 
+  private val mmps: Int = config.getAs[Int]("sim.speed").getOrElse(75)
+  val mmpsDelay: Int = 1000 / mmps
+
   private val cloudHost = config.as[String]("cloud.host")
   private val cloudPort = config.getAs[Int]("cloud.port").getOrElse(9000)
   val api = s"http://$cloudHost:$cloudPort/v1/"
@@ -140,6 +143,6 @@ object main extends App with LazyLogging {
 
       }
     }
-    Thread.sleep(100)
+    Thread.sleep(Px.mmpsDelay)
   }
 }
