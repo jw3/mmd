@@ -33,7 +33,10 @@ object Px extends LazyLogging {
   val tobeFunc = "move"
   val asisFunc = PositionUpdate
 
-  val api = "http://localhost:9000/v1/"
+  private val cloudHost = config.as[String]("cloud.host")
+  private val cloudPort = config.getAs[Int]("cloud.port").getOrElse(9000)
+  val api = s"http://$cloudHost:$cloudPort/v1/"
+
   private val Unused = "__unused__"
   private val brokerHost = config.as[String]("mqtt.host")
   private val brokerPort = config.getAs[Int]("mqtt.port").getOrElse(1883)
@@ -137,6 +140,6 @@ object main extends App with LazyLogging {
 
       }
     }
-    Thread.sleep(1000)
+    Thread.sleep(100)
   }
 }
