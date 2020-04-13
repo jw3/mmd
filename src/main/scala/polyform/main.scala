@@ -7,25 +7,36 @@ import akka.stream.alpakka.mqtt.scaladsl.MqttSource
 import akka.stream.alpakka.mqtt.{MqttConnectionSettings, MqttQoS, MqttSubscriptions}
 import akka.stream.scaladsl.{Keep, Sink}
 import com.ctc.polyform.Protocol.Topics._
-import com.ctc.polyform.Protocol.{CellZ, Module, ModuleConfig, ParticleDevice}
+import com.ctc.polyform.Protocol.{CellZ, Module, ModuleConfig}
 import com.typesafe.scalalogging.LazyLogging
+import net.ceedubs.ficus.Ficus._
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence
+import polyform.Px.{deviceId, prefix}
 import requests.Response
 import spray.json._
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
+import scala.util.Try
 
 object Px extends LazyLogging {
   implicit val system: ActorSystem = ActorSystem()
   implicit val materializer: ActorMaterializer = ActorMaterializer()
+  val config = system.settings.config
 
-  val deviceId = "d001"
+  val deviceId = "0_0"
+  val channel = "default"
+  val prefix = s"/xr/$channel"
+
+  val tobeFunc = "move"
+  val asisFunc = PositionUpdate
+
   val api = "http://localhost:9000/v1/"
   private val Unused = "__unused__"
-  val brokerHost = "localhost" //config.as[String]("mqtt.host")
-  val brokerPort = 1883 //config.as[Int]("mqtt.port")
-  val connectionSettings = MqttConnectionSettings(s"tcp://$brokerHost:$brokerPort", Unused, new MemoryPersistence)
+  private val brokerHost = config.as[String]("mqtt.host")
+  private val brokerPort = config.as[Int]("mqtt.port")
+  val mqttUri = s"tcp://$brokerHost:$brokerPort"
+  private val connectionSettings = MqttConnectionSettings(mqttUri, Unused, new MemoryPersistence)
 
   def publish(topic: String, data: String): Response =
     requests.post(api + "devices/events", data = Map("name" → topic, "data" → data))
@@ -34,7 +45,7 @@ object Px extends LazyLogging {
     val (subscribed, result) = MqttSource
       .atMostOnce(
         connectionSettings.withClientId(deviceId + name),
-        MqttSubscriptions(s"/F/$deviceId/$name", MqttQoS.atLeastOnce),
+        MqttSubscriptions(s"$prefix/$deviceId/$name", MqttQoS.atLeastOnce),
         bufferSize = 8
       )
       .toMat(Sink.foreach(e ⇒ fn(e.payload.utf8String)))(Keep.both)
@@ -55,60 +66,32 @@ object Px extends LazyLogging {
   }
 }
 
-object main extends App {
-  def R(dev: ParticleDevice) = dev.toJson.compactPrint
+object main extends App with LazyLogging {
+  logger.info("connecting to {}", Px.mqttUri)
   def S(R: Boolean, M: Boolean) = s"""{"ready":$R,"moving":$M}"""
   def P(cz: CellZ) = s"""{"x":${cz.x},"y":${cz.y},"z":${cz.z}}"""
 
-  var ready = false
+  val (x, y, w, h) = (0, 0, 8, 8)
+  val hardargs = s"""{ "x": $x, "y": $y, "w": $w, "h": $h }"""
+
+  var ready = true
+  var config: Option[ModuleConfig] = Try(hardargs.parseJson.convertTo[ModuleConfig]).toOption
+  var moduleAsIs: Option[Module] = config.map(Module(_))
+  var moduleToBe: Option[Module] = config.map(Module(_))
+
   var aligning = false
-  var config: Option[ModuleConfig] = None
-  var moduleAsIs: Option[Module] = None
-  var moduleToBe: Option[Module] = None
-
-  def configure(v: String) = {
-    require(config.isEmpty, "configuration was already specified")
-
-    val cfg = v.parseJson.convertTo[ModuleConfig]
-    config = Some(cfg)
-    moduleAsIs = Some(Module(cfg))
-
-    ready = config.isDefined
-    Px.publish(s"/xr/default/0_0/$StateUpdate", S(ready, aligning))
-  }
-
-  def addNode(v: String) = {
+  private def receiveMove(v: String): Unit = {
     require(config.nonEmpty, "configuration was not specified")
-
-    if (moduleToBe.isEmpty) moduleToBe = config.map(Module(_))
     moduleToBe = moduleToBe.map(_.set(v.parseJson.convertTo[CellZ]))
-    println(s"addNode: $v")
-  }
-
-  def align(s: String) = {
-    require(config.isDefined, "configuration is not defined")
-
+    println(s"move: $v")
     aligning = true
-    Px.publish(s"xr/0-0/$StateUpdate", S(ready, aligning))
   }
-
-  def cancel(s: String) = {
-    moduleToBe = None
-    aligning = false
-    Px.publish(s"xr/0-0/$StateUpdate", S(ready, aligning))
-  }
-
-  val setCfgFn = Px.function("setConfig", configure)
-  val addNodesFn = Px.function("addNodes", addNode)
-  val alignFn = Px.function("align", align)
-  val cancelFn = Px.function("cancel", cancel)
-
-  Px.publish(s"xr/$Register", R(ParticleDevice(Px.deviceId)))
+  val receiveMoveFn = Px.function(Px.tobeFunc, receiveMove)
 
   var steps: Int = 0
   while (true) {
 
-    if (aligning) {
+    if (ready && aligning) {
       steps += 1
 
       var moves = List.empty[CellZ]
@@ -120,7 +103,7 @@ object main extends App {
         tobe ← moduleToBe
         nowz ← asis.get(col, row)
         futz ← tobe.get(col, row)
-        if nowz.z < futz.z
+        if nowz.z < futz.z // todo;; need to move down too...
       } {
         val cz = CellZ(col, row, nowz.z + 1)
         moduleAsIs = Some(asis.set(cz))
@@ -132,13 +115,12 @@ object main extends App {
       moves match {
         case Nil ⇒
           aligning = false
-          Px.publish(s"xr/0-0/$StateUpdate", S(ready, aligning))
+          Px.publish(s"$prefix/$deviceId/$StateUpdate", S(ready, aligning))
           println("alignment completed")
         case all ⇒
-          all.foreach(cz ⇒ Px.publish(s"xr/0-0/$PositionUpdate", P(cz)))
+          all.foreach(cz ⇒ Px.publish(s"$prefix/$deviceId/${Px.asisFunc}", P(cz)))
       }
     }
     Thread.sleep(1000)
   }
 }
-
