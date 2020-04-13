@@ -1,8 +1,10 @@
 import Dependencies.Ver
 
 name := "mockdevice"
+
 organization := "polyform"
 scalaVersion := "2.12.8"
+git.useGitDescribe := true
 scalacOptions ++= Seq(
   "-encoding",
   "UTF-8",
@@ -25,11 +27,15 @@ libraryDependencies := Seq(
   "com.typesafe.scala-logging" %% "scala-logging" % Ver.scalaLogging,
 )
 
-enablePlugins(GitVersioning, JavaServerAppPackaging)
+enablePlugins(GitVersioning, BuildInfoPlugin, JavaServerAppPackaging)
 dockerExposedPorts := Seq(9000)
 dockerUpdateLatest := true
 
-val procVer = "cb3da332c65a11eca0dd00043911f93bb47c6ed0" // 04-09-2020
+buildInfoKeys := Seq[BuildInfoKey](name, version, scalaVersion, sbtVersion)
+buildInfoPackage := "polyform.mockdevice"
+buildInfoUsePackageAsPath := true
+
+val proxyVer = "cb3da332c65a11eca0dd00043911f93bb47c6ed0" // 04-09-2020
 dependsOn(
-  ProjectRef(uri(s"https://gitlab-int.ctc.com/polyform/particle-proxy.git#$procVer"), "proxy"),
+  ProjectRef(uri(s"https://gitlab-int.ctc.com/polyform/particle-proxy.git#$proxyVer"), "proxy"),
 )
