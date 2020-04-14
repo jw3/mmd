@@ -35,6 +35,7 @@ object Px extends LazyLogging {
 
   private val mmps: Int = config.getAs[Int]("sim.speed").getOrElse(75)
   val mmpsDelay: Int = 1000 / mmps
+  val stepSize: Int = 1
 
   private val cloudHost = config.as[String]("cloud.host")
   private val cloudPort = config.getAs[Int]("cloud.port").getOrElse(9000)
@@ -75,6 +76,9 @@ object Px extends LazyLogging {
       }
     }
   }
+
+  def up(l: Int, r: Int): Int = l + r
+  def down(l: Int, r: Int): Int = l - r
 }
 
 object main extends App with LazyLogging {
@@ -113,9 +117,10 @@ object main extends App with LazyLogging {
         tobe ← moduleToBe
         nowz ← asis.get(col, row)
         futz ← tobe.get(col, row)
-        if nowz.z < futz.z // todo;; need to move down too...
+        if nowz.z != futz.z
+        op = if (futz.z < nowz.z) Px.up _ else Px.down _
       } {
-        val cz = CellZ(col, row, nowz.z + 1)
+        val cz = CellZ(col, row, op(nowz.z.toInt, Px.stepSize))
         moduleAsIs = Some(asis.set(cz))
         moves :+= cz
       }
