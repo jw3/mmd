@@ -39,7 +39,7 @@ class Driver(x: Int, y: Int, pub: ActorRef) extends Actor with Stash with Timers
 
   def move(asis: Int, tobe: Int, op: MoveOp): Receive = {
     import scala.concurrent.duration.DurationInt
-    timers.startPeriodicTimer(PerformOp, PerformOp, 1.second / 60)
+    timers.startPeriodicTimer(PerformOp, PerformOp, 1.second / 30)
 
     var to = asis
 
