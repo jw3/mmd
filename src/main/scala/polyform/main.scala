@@ -61,7 +61,7 @@ object main extends App with LazyLogging {
   val mqttSink: Sink[MqttMessage, Future[Done]] =
     MqttSink(connectionSettings.withClientId(s"mock_publisher"), MqttQoS.atLeastOnce)
   val publisher = Source
-    .actorRef[AsIsMoveEvent](10000, OverflowStrategy.fail)
+    .actorRef[AsIsMoveEvent](1000, OverflowStrategy.dropHead)
     .map {
       case AsIsMoveEvent(dev, cz) =>
         MqttMessage(s"$channelPrefix/${Px.asisChannel}/$dev/move", ByteString(P(cz)))
@@ -86,7 +86,7 @@ object main extends App with LazyLogging {
         .atMostOnce(
           Px.connectionSettings.withClientId(name),
           MqttSubscriptions(s"$channelPrefix/$tobeChannel/$name/move", MqttQoS.atLeastOnce),
-          bufferSize = 10000
+          bufferSize = 1000
         )
         .alsoTo(Sink.foreach(m => println(s"${m.topic} -- ${m.payload.utf8String}")))
         .toMat(Sink.actorRef(ref, Done))(Keep.both)
