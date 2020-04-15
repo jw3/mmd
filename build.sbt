@@ -35,7 +35,7 @@ buildInfoKeys := Seq[BuildInfoKey](name, version, scalaVersion, sbtVersion)
 buildInfoPackage := "polyform.mockdevice"
 buildInfoUsePackageAsPath := true
 
-val proxyVer = "cb3da332c65a11eca0dd00043911f93bb47c6ed0" // 04-09-2020
+val proxyVer = "3f858e34ff293abc4a047eab87c631c323c3531b" // "z in mm" branch
 dependsOn(
   ProjectRef(uri(s"https://gitlab-int.ctc.com/polyform/particle-proxy.git#$proxyVer"), "proxy"),
 )
