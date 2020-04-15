@@ -5,8 +5,11 @@ import akka.stream.alpakka.mqtt.MqttMessage
 import com.ctc.polyform.Protocol.{CellZ, Module, ModuleConfig}
 import spray.json._
 
+/**
+ * controller; manages up to 64 drivers
+ */
 object Controller {
-  def props( pub: ActorRef, mc: ModuleConfig) = Props(new Controller( pub, mc))
+  def props(pub: ActorRef, mc: ModuleConfig) = Props(new Controller(pub, mc))
 
   sealed trait DeviceEvent
   case class AlignmentComplete(deviceId: String) extends DeviceEvent
@@ -31,10 +34,8 @@ class Controller(pub: ActorRef, mc: ModuleConfig) extends Actor with ActorLoggin
 
     {
       case e: MqttMessage =>
-        println("recv")
         val tobe = Module(mc).set(e.payload.utf8String.parseJson.convertTo[CellZ])
-        tobe.columns.flatMap(cz => driver(cz.x, cz.y).map(cz -> _)).foreach(x =>
-          x._2 ! x._1)
+        tobe.columns.flatMap(cz => driver(cz.x, cz.y).map(cz -> _)).foreach(x => x._2 ! x._1)
     }
   }
 

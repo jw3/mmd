@@ -1,12 +1,15 @@
 package polyform
 
-import akka.actor.{Actor, ActorLogging, ActorRef, Props, Stash}
+import akka.actor.{Actor, ActorLogging, ActorRef, Props, Stash, Timers}
 import com.ctc.polyform.Protocol.CellZ
 import polyform.Controller.AsIsMoveEvent
 import polyform.Driver.{MoveOp, PerformOp, _}
 
+/**
+  * driver; controls the movement of a single x,y column
+  */
 object Driver {
-  def props(x: Int, y: Int, pub: ActorRef) = Props(new Driver(x, y, pub))
+  def props(x: Int, y: Int, pub: ActorRef): Props = Props(new Driver(x, y, pub))
 
   val stepSize = 1
 
@@ -16,9 +19,9 @@ object Driver {
   private def down(l: Int, r: Int): Int = l - r
 }
 
-class Driver(x: Int, y: Int, pub: ActorRef) extends Actor with Stash with ActorLogging {
-  val deviceId = context.parent.path.name
-  println(s"created $deviceId :: $x, $y")
+class Driver(x: Int, y: Int, pub: ActorRef) extends Actor with Stash with Timers with ActorLogging {
+  private val deviceId = context.parent.path.name
+  log.info(s"$deviceId :: $x, $y :: ready!")
 
   def waiting(z: Int): Receive = {
     unstashAll()
@@ -31,22 +34,29 @@ class Driver(x: Int, y: Int, pub: ActorRef) extends Actor with Stash with ActorL
   }
 
   def move(asis: Int, tobe: Int, op: MoveOp): Receive = {
-    self ! PerformOp
+    import scala.concurrent.duration.DurationInt
+    timers.startPeriodicTimer(PerformOp, PerformOp, 1.second / 60)
+
+    var to = asis
 
     {
+      // represents a change in destination
       case CellZ(`x`, `y`, z) if tobe != z =>
         stash()
-        context.become(waiting(asis))
+        timers.cancel(PerformOp)
+        context.become(waiting(to))
 
       case PerformOp if asis == tobe =>
+        timers.cancel(PerformOp)
+        // todo;; fire event
         context.become(waiting(asis))
 
+      // the move operation, needs throttled
       case PerformOp =>
-        val to = op(asis)
+        to = op(to)
         pub ! AsIsMoveEvent(deviceId, CellZ(x, y, to))
-        context.become(move(to, tobe, op))
     }
   }
 
-  def receive = waiting(0)
+  def receive: Receive = waiting(0)
 }
