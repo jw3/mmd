@@ -9,12 +9,11 @@ import akka.stream.{ActorMaterializer, OverflowStrategy}
 import akka.util.ByteString
 import com.ctc.polyform.Protocol
 import com.ctc.polyform.Protocol.CellZ
-import com.ctc.polyform.Protocol.Topics._
 import com.typesafe.scalalogging.LazyLogging
 import net.ceedubs.ficus.Ficus._
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence
 import polyform.Controller.AsIsMoveEvent
-import polyform.Px.{connectionSettings, tobeChannel, topicPrefix}
+import polyform.Px.{channelPrefix, connectionSettings, tobeChannel}
 import requests.Response
 
 import scala.concurrent.Future
@@ -24,12 +23,12 @@ object Px extends LazyLogging {
   implicit val materializer: ActorMaterializer = ActorMaterializer()
   val config = system.settings.config
 
-  val asisChannel = config.as[String]("channel.asis")
-  val tobeChannel = config.as[String]("channel.tobe")
-  val topicPrefix = s"xr"
+  val asisChannel: String = config.as[String]("channel.asis")
+  val tobeChannel: String = config.as[String]("channel.tobe")
+  val channelPrefix: String = config.as[String]("channel.prefix")
 
   val tobeFunc = "move"
-  val asisFunc = PositionUpdate
+  val asisFunc = "move"
 
   private val mmps: Int = config.getAs[Int]("sim.speed").getOrElse(75)
   val mmpsDelay: Int = 1000 / mmps
@@ -65,7 +64,7 @@ object main extends App with LazyLogging {
     .actorRef[AsIsMoveEvent](10000, OverflowStrategy.fail)
     .map {
       case AsIsMoveEvent(dev, cz) =>
-        MqttMessage(s"/$topicPrefix/${Px.asisChannel}/$dev/move", ByteString(P(cz)))
+        MqttMessage(s"$channelPrefix/${Px.asisChannel}/$dev/move", ByteString(P(cz)))
     }
     .toMat(mqttSink)(Keep.left)
     .run()
@@ -86,10 +85,10 @@ object main extends App with LazyLogging {
       MqttSource
         .atMostOnce(
           Px.connectionSettings.withClientId(name),
-          MqttSubscriptions(s"$topicPrefix/$tobeChannel/$name/move", MqttQoS.atLeastOnce),
+          MqttSubscriptions(s"$channelPrefix/$tobeChannel/$name/move", MqttQoS.atLeastOnce),
           bufferSize = 10000
         )
-        .alsoTo(Sink.foreach(println))
+        .alsoTo(Sink.foreach(m => println(s"${m.topic} -- ${m.payload.utf8String}")))
         .toMat(Sink.actorRef(ref, Done))(Keep.both)
         .run()
   }
