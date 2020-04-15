@@ -62,7 +62,7 @@ class Driver(x: Int, y: Int, pub: ActorRef) extends Actor with Stash with Timers
         //println(s"$x,$y timer 1")
         timers.cancel(PerformOp)
         // todo;; fire event
-        context.become(waiting(asis))
+        context.become(waiting(to))
 
       // movement, throttled by the timer
       case PerformOp =>
