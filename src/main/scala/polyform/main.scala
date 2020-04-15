@@ -71,7 +71,7 @@ object main extends App with LazyLogging {
 
   // create device actors
   val devices =
-    Seq((0, 0), (0, 1), (0, 2), (0, 3))
+    Seq((0, 0), (1, 0), (2, 0), (3, 0))
       .map(xy => s"${xy._1}_${xy._2}" -> xy)
       .map(xy =>
         xy._1 -> Px.system
