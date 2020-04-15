@@ -2,7 +2,7 @@ package polyform
 
 import akka.actor.{Actor, ActorLogging, ActorRef, Props, Stash}
 import com.ctc.polyform.Protocol.CellZ
-import polyform.Device.AsIsMoveEvent
+import polyform.Controller.AsIsMoveEvent
 import polyform.Driver.{MoveOp, PerformOp, _}
 
 object Driver {

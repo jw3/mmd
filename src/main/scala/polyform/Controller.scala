@@ -5,8 +5,8 @@ import akka.stream.alpakka.mqtt.MqttMessage
 import com.ctc.polyform.Protocol.{CellZ, Module, ModuleConfig}
 import spray.json._
 
-object Device {
-  def props( pub: ActorRef, mc: ModuleConfig) = Props(new Device( pub, mc))
+object Controller {
+  def props( pub: ActorRef, mc: ModuleConfig) = Props(new Controller( pub, mc))
 
   sealed trait DeviceEvent
   case class AlignmentComplete(deviceId: String) extends DeviceEvent
@@ -16,7 +16,7 @@ object Device {
   private case class AlignmentStepCompleted(became: Module)
 }
 
-class Device( pub: ActorRef, mc: ModuleConfig) extends Actor with ActorLogging {
+class Controller(pub: ActorRef, mc: ModuleConfig) extends Actor with ActorLogging {
   private val deviceId = context.self.path.name
 
   def driver(x: Int, y: Int): Option[ActorRef] = context.child(s"${x}_$y")

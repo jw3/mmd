@@ -13,7 +13,7 @@ import com.ctc.polyform.Protocol.Topics._
 import com.typesafe.scalalogging.LazyLogging
 import net.ceedubs.ficus.Ficus._
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence
-import polyform.Device.AsIsMoveEvent
+import polyform.Controller.AsIsMoveEvent
 import polyform.Px.{connectionSettings, tobeChannel, topicPrefix}
 import requests.Response
 
@@ -76,7 +76,7 @@ object main extends App with LazyLogging {
       .map(xy => s"${xy._1}_${xy._2}" -> xy)
       .map(xy =>
         xy._1 -> Px.system
-          .actorOf(Device.props(publisher, Protocol.ModuleConfig(xy._2._1, xy._2._2, 8, 8, None)), xy._1)
+          .actorOf(Controller.props(publisher, Protocol.ModuleConfig(xy._2._1, xy._2._2, 8, 8, None)), xy._1)
       )
       .toMap
 
