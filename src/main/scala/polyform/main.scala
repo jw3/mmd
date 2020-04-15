@@ -7,19 +7,17 @@ import akka.stream.alpakka.mqtt.{MqttConnectionSettings, MqttMessage, MqttQoS, M
 import akka.stream.scaladsl.{Keep, Sink, Source}
 import akka.stream.{ActorMaterializer, OverflowStrategy}
 import akka.util.ByteString
+import com.ctc.polyform.Protocol
+import com.ctc.polyform.Protocol.CellZ
 import com.ctc.polyform.Protocol.Topics._
-import com.ctc.polyform.Protocol.{CellZ, Module, ModuleConfig}
 import com.typesafe.scalalogging.LazyLogging
 import net.ceedubs.ficus.Ficus._
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence
 import polyform.Device.AsIsMoveEvent
 import polyform.Px.{connectionSettings, tobeChannel, topicPrefix}
 import requests.Response
-import spray.json._
 
 import scala.concurrent.Future
-import scala.concurrent.duration.DurationInt
-import scala.util.Try
 
 object Px extends LazyLogging {
   implicit val system: ActorSystem = ActorSystem()
@@ -61,14 +59,6 @@ object main extends App with LazyLogging {
   def S(R: Boolean, M: Boolean) = s"""{"ready":$R,"moving":$M}"""
   def P(cz: CellZ) = s"""[{"x":${cz.x},"y":${cz.y},"z":${cz.z.toInt}}]"""
 
-  val (x, y, w, h) = (0, 0, 8, 8)
-  val hardargs = s"""{ "x": $x, "y": $y, "w": $w, "h": $h }"""
-
-  var ready = true
-  var config: Option[ModuleConfig] = Try(hardargs.parseJson.convertTo[ModuleConfig]).toOption
-  var moduleAsIs: Option[Module] = config.map(Module(_))
-  var moduleToBe: Option[Module] = config.map(Module(_))
-
   val mqttSink: Sink[MqttMessage, Future[Done]] =
     MqttSink(connectionSettings.withClientId(s"mock_publisher"), MqttQoS.atLeastOnce)
   val publisher = Source
@@ -82,7 +72,13 @@ object main extends App with LazyLogging {
 
   // create device actors
   val devices =
-    Seq("0_0", "0_1", "0_2", "0_3").map(id => id -> Px.system.actorOf(Device.props(id, publisher, config.get))).toMap
+    Seq((0, 0), (0, 1), (0, 2), (0, 3))
+      .map(xy => s"${xy._1}_${xy._2}" -> xy)
+      .map(xy =>
+        xy._1 -> Px.system
+          .actorOf(Device.props(publisher, Protocol.ModuleConfig(xy._2._1, xy._2._2, 8, 8, None)), xy._1)
+      )
+      .toMap
 
   // subscribe to mqtt
   devices.foreach {
@@ -93,7 +89,7 @@ object main extends App with LazyLogging {
           MqttSubscriptions(s"$topicPrefix/$tobeChannel/$name/move", MqttQoS.atLeastOnce),
           bufferSize = 10000
         )
-        .throttle(7, 1.second)
+        .alsoTo(Sink.foreach(println))
         .toMat(Sink.actorRef(ref, Done))(Keep.both)
         .run()
   }
