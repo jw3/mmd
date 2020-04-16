@@ -1,4 +1,4 @@
-package polyform
+package polyform.mqtt
 
 import akka.Done
 import akka.actor.ActorSystem
@@ -12,9 +12,11 @@ import com.ctc.polyform.Protocol.CellZ
 import com.typesafe.scalalogging.LazyLogging
 import net.ceedubs.ficus.Ficus._
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence
-import polyform.Controller.AsIsMoveEvent
-import polyform.Px.{channelPrefix, connectionSettings, tobeChannel}
+import polyform.Controller
+import polyform.Controller.{AsIsMoveEvent, MovementRequest}
+import polyform.mqtt.Px.{channelPrefix, connectionSettings, tobeChannel}
 import requests.Response
+import spray.json._
 
 import scala.concurrent.Future
 
@@ -51,7 +53,7 @@ object Px extends LazyLogging {
   def down(l: Int, r: Int): Int = l - r
 }
 
-object main extends App with LazyLogging {
+object boot extends App with LazyLogging {
   import Px.materializer
 
   logger.info("connecting to {}", Px.mqttUri)
@@ -89,6 +91,13 @@ object main extends App with LazyLogging {
           bufferSize = 1000
         )
         .alsoTo(Sink.foreach(m => println(s"${m.topic} -- ${m.payload.utf8String}")))
+        .map { m =>
+          m.payload.utf8String.parseJson match {
+            case a: JsArray => a.convertTo[List[CellZ]]
+            case o          => List(o.convertTo[CellZ])
+          }
+        }
+        .map(MovementRequest(_))
         .toMat(Sink.actorRef(ref, Done))(Keep.both)
         .run()
   }
