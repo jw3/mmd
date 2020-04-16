@@ -11,15 +11,15 @@ import com.ctc.polyform.Protocol.{CellZ, ModuleConfig}
 import com.typesafe.scalalogging.LazyLogging
 import net.ceedubs.ficus.Ficus._
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence
-import polyform.Controller
 import polyform.Controller.{AsIsMoveEvent, MovementRequest}
+import polyform.{api, Controller}
 import requests.Response
 import spray.json._
 
 import scala.concurrent.Future
 
 object boot extends App with LazyLogging {
-  implicit val system: ActorSystem = ActorSystem()
+  implicit val system: ActorSystem = ActorSystem("mqtt-mockdev")
   implicit val materializer: ActorMaterializer = ActorMaterializer()
   val config = system.settings.config
 
@@ -36,7 +36,7 @@ object boot extends App with LazyLogging {
 
   private val cloudHost = config.as[String]("cloud.host")
   private val cloudPort = config.getAs[Int]("cloud.port").getOrElse(9000)
-  val api = s"http://$cloudHost:$cloudPort/v1/"
+  val apiUri = s"http://$cloudHost:$cloudPort/v1/"
 
   private val Unused = "__unused__"
   private val brokerHost = config.as[String]("mqtt.host")
@@ -60,13 +60,11 @@ object boot extends App with LazyLogging {
     .run()
 
   // create device actors
-  val devices =
-    Seq((0, 0), (1, 0), (2, 0), (3, 0))
-      .map(xy => s"${xy._1}_${xy._2}" -> xy)
-      .map(xy =>
-        xy._1 -> system.actorOf(Controller.props(publisher, ModuleConfig(xy._2._1, xy._2._2, 8, 8, None)), xy._1)
-      )
-      .toMap
+  val devices = api.DeviceIDs
+    .map(xy => s"${xy._1}_${xy._2}" -> xy)
+    .map(xy => xy._1 -> system.actorOf(Controller.props(publisher, ModuleConfig(xy._2._1, xy._2._2, 8, 8, None)), xy._1)
+    )
+    .toMap
 
   // subscribe to mqtt
   devices.foreach {
