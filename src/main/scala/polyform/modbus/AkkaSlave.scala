@@ -4,11 +4,10 @@ import akka.actor.ActorRef
 import akka.pattern.ask
 import akka.util.Timeout
 import com.digitalpetri.modbus.ExceptionCode
-import com.digitalpetri.modbus.responses.ReadInputRegistersResponse
+import com.digitalpetri.modbus.responses.{ReadInputRegistersResponse, WriteSingleRegisterResponse}
 import com.digitalpetri.modbus.slave.{ModbusTcpSlave, ModbusTcpSlaveConfig, ServiceRequestHandler}
 import io.netty.buffer.PooledByteBufAllocator
 import io.netty.util.ReferenceCountUtil
-import polyform.api
 import polyform.modbus.MemoryVR.VR
 
 // todo;; proper ec
@@ -23,15 +22,29 @@ object AkkaSlave {
     val slave: ModbusTcpSlave = new ModbusTcpSlave(config)
 
     slave.setRequestHandler(new ServiceRequestHandler {
-      override def onReadInputRegisters(svc: api.ReadInputRegisters) {
+      override def onReadInputRegisters(svc: ReadInputRegisters) {
         val request = svc.getRequest
         val addr = request.getAddress
         val f = vr ? MemoryVR.RequestVR(addr)
         f.mapTo[VR].onComplete {
           case Success(v) =>
             val registers = PooledByteBufAllocator.DEFAULT.buffer(request.getQuantity)
-            registers.writeShort(v.data)
+            registers.writeShort(v.value)
             svc.sendResponse(new ReadInputRegistersResponse(registers))
+            ReferenceCountUtil.release(request)
+          case Failure(_) =>
+            svc.sendException(ExceptionCode.SlaveDeviceFailure)
+        }
+      }
+
+      override def onWriteSingleRegister(svc: WriteInputRegisters) {
+        val request = svc.getRequest
+        val address = request.getAddress
+        val value = request.getValue
+        val f = vr ? MemoryVR.ModifyVR(address, value)
+        f.mapTo[VR].onComplete {
+          case Success(_) =>
+            svc.sendResponse(new WriteSingleRegisterResponse(address, value))
             ReferenceCountUtil.release(request)
           case Failure(_) =>
             svc.sendException(ExceptionCode.SlaveDeviceFailure)
