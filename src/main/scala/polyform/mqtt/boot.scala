@@ -7,20 +7,18 @@ import akka.stream.alpakka.mqtt.{MqttConnectionSettings, MqttMessage, MqttQoS, M
 import akka.stream.scaladsl.{Keep, Sink, Source}
 import akka.stream.{ActorMaterializer, OverflowStrategy}
 import akka.util.ByteString
-import com.ctc.polyform.Protocol
-import com.ctc.polyform.Protocol.CellZ
+import com.ctc.polyform.Protocol.{CellZ, ModuleConfig}
 import com.typesafe.scalalogging.LazyLogging
 import net.ceedubs.ficus.Ficus._
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence
 import polyform.Controller
 import polyform.Controller.{AsIsMoveEvent, MovementRequest}
-import polyform.mqtt.Px.{channelPrefix, connectionSettings, tobeChannel}
 import requests.Response
 import spray.json._
 
 import scala.concurrent.Future
 
-object Px extends LazyLogging {
+object boot extends App with LazyLogging {
   implicit val system: ActorSystem = ActorSystem()
   implicit val materializer: ActorMaterializer = ActorMaterializer()
   val config = system.settings.config
@@ -46,17 +44,7 @@ object Px extends LazyLogging {
   val mqttUri = s"tcp://$brokerHost:$brokerPort"
   val connectionSettings = MqttConnectionSettings(mqttUri, Unused, new MemoryPersistence)
 
-  def publish(topic: String, data: String): Response =
-    requests.post(api + "devices/events", data = Map("name" → topic, "data" → data))
-
-  def up(l: Int, r: Int): Int = l + r
-  def down(l: Int, r: Int): Int = l - r
-}
-
-object boot extends App with LazyLogging {
-  import Px.materializer
-
-  logger.info("connecting to {}", Px.mqttUri)
+  logger.info("connecting to {}", mqttUri)
   def S(R: Boolean, M: Boolean) = s"""{"ready":$R,"moving":$M}"""
   def P(cz: CellZ) = s"""[{"x":${cz.x},"y":${cz.y},"z":${cz.z.toInt}}]"""
 
@@ -66,7 +54,7 @@ object boot extends App with LazyLogging {
     .actorRef[AsIsMoveEvent](1000, OverflowStrategy.dropHead)
     .map {
       case AsIsMoveEvent(dev, cz) =>
-        MqttMessage(s"$channelPrefix/${Px.asisChannel}/$dev/move", ByteString(P(cz)))
+        MqttMessage(s"$channelPrefix/${asisChannel}/$dev/move", ByteString(P(cz)))
     }
     .toMat(mqttSink)(Keep.left)
     .run()
@@ -76,8 +64,7 @@ object boot extends App with LazyLogging {
     Seq((0, 0), (1, 0), (2, 0), (3, 0))
       .map(xy => s"${xy._1}_${xy._2}" -> xy)
       .map(xy =>
-        xy._1 -> Px.system
-          .actorOf(Controller.props(publisher, Protocol.ModuleConfig(xy._2._1, xy._2._2, 8, 8, None)), xy._1)
+        xy._1 -> system.actorOf(Controller.props(publisher, ModuleConfig(xy._2._1, xy._2._2, 8, 8, None)), xy._1)
       )
       .toMap
 
@@ -86,7 +73,7 @@ object boot extends App with LazyLogging {
     case (name, ref) =>
       MqttSource
         .atMostOnce(
-          Px.connectionSettings.withClientId(name),
+          connectionSettings.withClientId(name),
           MqttSubscriptions(s"$channelPrefix/$tobeChannel/$name/move", MqttQoS.atLeastOnce),
           bufferSize = 1000
         )
@@ -101,6 +88,12 @@ object boot extends App with LazyLogging {
         .toMat(Sink.actorRef(ref, Done))(Keep.both)
         .run()
   }
+
+  def publish(api: String, topic: String, data: String): Response =
+    requests.post(api + "devices/events", data = Map("name" → topic, "data" → data))
+
+  def up(l: Int, r: Int): Int = l + r
+  def down(l: Int, r: Int): Int = l - r
 }
 
 //  Px.publish(s"$topicPrefix/$deviceId/$StateUpdate", S(ready, aligning))
