@@ -68,11 +68,11 @@ object boot extends App with LazyLogging {
 
   // subscribe to mqtt
   devices.foreach {
-    case (name, ref) =>
+    case (deviceId, ref) =>
       MqttSource
         .atMostOnce(
-          connectionSettings.withClientId(name),
-          MqttSubscriptions(s"$channelPrefix/$tobeChannel/$name/move", MqttQoS.atLeastOnce),
+          connectionSettings.withClientId(deviceId),
+          MqttSubscriptions(s"$channelPrefix/$tobeChannel/$deviceId/move", MqttQoS.atLeastOnce),
           bufferSize = 1000
         )
         .alsoTo(Sink.foreach(m => println(s"${m.topic} -- ${m.payload.utf8String}")))
@@ -82,7 +82,7 @@ object boot extends App with LazyLogging {
             case o          => List(o.convertTo[CellZ])
           }
         }
-        .map(MovementRequest(_))
+        .map(e => MovementRequest(deviceId, e))
         .toMat(Sink.actorRef(ref, Done))(Keep.both)
         .run()
   }

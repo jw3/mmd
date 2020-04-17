@@ -17,7 +17,7 @@ object Controller {
 
   private case class AlignmentStepCompleted(became: Module)
 
-  case class MovementRequest(cells: Seq[CellZ])
+  case class MovementRequest(deviceId: String, cells: Seq[CellZ])
 }
 
 class Controller(pub: ActorRef, mc: ModuleConfig) extends Actor with ActorLogging {
@@ -34,7 +34,7 @@ class Controller(pub: ActorRef, mc: ModuleConfig) extends Actor with ActorLoggin
     println(s"device $deviceId ready!")
 
     {
-      case MovementRequest(cells) =>
+      case MovementRequest(_, cells) =>
         cells.flatMap(cz => driver(cz.x, cz.y).map(cz -> _)).foreach { x =>
           x._2 ! x._1
         }
