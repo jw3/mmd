@@ -3,11 +3,13 @@ package polyform.modbus
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import com.ctc.polyform.Protocol.CellZ
 import polyform.Controller.{AsIsMoveEvent, MovementRequest}
+import polyform.api.telemetry
 import polyform.modbus.MemoryVR._
 
 object MemoryVR {
+  private type Addr = Int
   private type XY = (Int, Int)
-  private type MemMap = Map[XY, Int]
+  private type MemMap = Map[Addr, Int]
 
   def props(id: String, pub: ActorRef): Props = Props(new MemoryVR(id, pub))
 
@@ -26,18 +28,19 @@ class MemoryVR(deviceId: String, pub: ActorRef) extends Actor with ActorLogging 
   var table: MemMap = Map.empty
 
   def receive: Receive = {
-    case ModifyVR(address, value) =>
-      val xy = x_y(address)
-      table += xy -> value
+    case ModifyVR(addr, value) =>
+      table += addr -> value
       sender ! VR(value)
+
+      val xy = x_y(addr)
       pub ! MovementRequest(deviceId, Seq(CellZ(xy._1, xy._2, value)))
 
-    case RequestVR(address) ⇒
-      val value = table.getOrElse(x_y(address), 0)
+    case RequestVR(addr) ⇒
+      val value = table.getOrElse(addr, 0)
       sender ! VR(value)
 
     case AsIsMoveEvent(_, cz) =>
-    // todo;; this needs written to the telemetry
-    // table += x_y(cz) -> cz.z
+      val addr = telemetry.Mpos.vr(cz.x, cz.y)
+      table += addr -> cz.z
   }
 }
