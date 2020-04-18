@@ -32,7 +32,7 @@ class Driver(x: Int, y: Int, pub: ActorRef) extends Actor with Stash with Timers
 
       case CellZ(`x`, `y`, tobe) =>
         val dir = if (z < tobe) up(_, stepSize) else down(_, stepSize)
-        //println(s"$x,$y moving")
+        println(s"$x,$y moving")
         context.become(move(z, tobe, dir))
     }
   }

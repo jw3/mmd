@@ -1,22 +1,29 @@
 package polyform.modbus
 
 import akka.actor.{ActorRef, ActorSystem}
+import akka.stream.ActorMaterializer
 import com.ctc.polyform.Protocol.ModuleConfig
 import com.digitalpetri.modbus.slave.ModbusTcpSlaveConfig
 import polyform.api.Device
+import polyform.mqtt.PubSub
 import polyform.{api, Controller}
 
 object boot extends App {
-  private val system = ActorSystem("modbus-mockdev")
-  private val config: ModbusTcpSlaveConfig = new ModbusTcpSlaveConfig.Builder().build()
+  private implicit val system = ActorSystem("modbus-mockdev")
+  private implicit val mat = ActorMaterializer()
+  private val config = system.settings.config
+  private val modbusConfig: ModbusTcpSlaveConfig = new ModbusTcpSlaveConfig.Builder().build()
   private val hostname = "localhost"
   private val baseport = 50200
+
+  // connect to mqtt as a publisher for telemetry
+  val mqttAsisPublisher = PubSub.pub(config)
 
   // stringified device ids
   val deviceNames = api.DeviceIDs.map(xy => s"${xy._1}_${xy._2}" -> xy)
 
   // a single router for all devices
-  val router = system.actorOf(Router.props(), "router")
+  val router = system.actorOf(Router.props(mqttAsisPublisher), "router")
 
   // VR memory
   val mem: Map[String, ActorRef] = deviceNames.map { xy =>
@@ -36,7 +43,7 @@ object boot extends App {
   // create modbus slave per device
   api.DeviceIDs
     .map(xy => s"${xy._1}_${xy._2}")
-    .map(xy => AkkaSlave(mem(xy), config))
+    .map(xy => AkkaSlave(mem(xy), modbusConfig))
     .zipWithIndex
     .foreach {
       case (s, i) =>

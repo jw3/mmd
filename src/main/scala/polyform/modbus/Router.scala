@@ -1,14 +1,14 @@
 package polyform.modbus
 
-import akka.actor.{Actor, ActorLogging, Props}
+import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import polyform.Controller.{AsIsMoveEvent, MovementRequest}
 import polyform.api.Device
 
 object Router {
-  def props(): Props = Props(new Router)
+  def props(bus: ActorRef): Props = Props(new Router(bus))
 }
 
-class Router extends Actor with ActorLogging {
+class Router(bus: ActorRef) extends Actor with ActorLogging {
   def ready(devices: Map[String, Seq[Device]]): Receive = {
     case d: Device =>
       context.become(
@@ -19,6 +19,7 @@ class Router extends Actor with ActorLogging {
 
     case e @ AsIsMoveEvent(dev, _) =>
       devices.get(dev).foreach(_.foreach(_.mem ! e))
+      bus ! e
 
     case e @ MovementRequest(dev, _) =>
       devices.get(dev).foreach(_.foreach(_.ref ! e))

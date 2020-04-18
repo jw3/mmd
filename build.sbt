@@ -31,6 +31,7 @@ libraryDependencies := Seq(
 enablePlugins(GitVersioning, BuildInfoPlugin, JavaServerAppPackaging)
 dockerExposedPorts := Seq(9000)
 dockerUpdateLatest := true
+mainClass in Compile := Some("polyform.main")
 
 buildInfoKeys := Seq[BuildInfoKey](name, version, scalaVersion, sbtVersion)
 buildInfoPackage := "polyform.mockdevice"
