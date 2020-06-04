@@ -25,11 +25,11 @@ object AkkaSlave {
       override def onReadInputRegisters(svc: ReadInputRegisters) {
         val request = svc.getRequest
         val addr = request.getAddress
-        val f = vr ? MemoryVR.RequestVR(addr)
-        f.mapTo[VR].onComplete {
+        val f = vr ? MemoryVR.RequestVR(addr, request.getQuantity)
+        f.mapTo[Seq[VR]].onComplete {
           case Success(v) =>
             val registers = PooledByteBufAllocator.DEFAULT.buffer(request.getQuantity)
-            registers.writeShort(v.value)
+            v.foreach(vv => registers.writeShort(vv.value))
             svc.sendResponse(new ReadInputRegistersResponse(registers))
             ReferenceCountUtil.release(request)
           case Failure(_) =>

@@ -20,7 +20,7 @@ object MemoryVR {
   def x_y(cz: CellZ): XY = cz.x -> cz.y
 
   case class ModifyVR(address: Int, value: Int)
-  case class RequestVR(address: Int)
+  case class RequestVR(address: Int, quantity: Int)
   case class VR(value: Int)
 }
 
@@ -35,9 +35,12 @@ class MemoryVR(deviceId: String, pub: ActorRef) extends Actor with ActorLogging 
       val xy = x_y(addr)
       pub ! MovementRequest(deviceId, Seq(CellZ(xy._1, xy._2, value)))
 
-    case RequestVR(addr) ⇒
-      val value = table.getOrElse(addr, 0)
-      sender ! VR(value)
+    case RequestVR(addr, quantity) ⇒
+      var res = Seq.empty[VR]
+      for(i <- 0 until quantity){
+        res :+= VR(table.getOrElse(addr + i, 0))
+      }
+      sender ! res
 
     case AsIsMoveEvent(_, cz) =>
       val addr = telemetry.Mpos.vr(cz.x, cz.y)
